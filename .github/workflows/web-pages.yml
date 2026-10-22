@@ -1,0 +1,123 @@
+# Builds the browser version (apps/vectorcraft-web, WebAssembly via Trunk) and publishes it to
+# GitHub Pages, so the app runs at https://<owner>.github.io/<repo>/ with no server-side code.
+#
+# One-time repository setup (Settings → Pages → "Build and deployment" → Source: GitHub Actions),
+# then every push to the branches below redeploys. The site is also buildable locally with
+# `cd apps/vectorcraft-web && trunk build --release` (output: dist/web). Hosting notes:
+# packaging/web/README.md.
+name: Web (GitHub Pages)
+
+on:
+  push:
+    branches: [main, arena/b1692d6f-vectorcraft]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "examples/**"
+  workflow_dispatch:
+    inputs:
+      craft-fonts:
+        description: "Build with craft-fonts (Japanese and Arabic text). Off: the app uses only its own fonts."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes a build that is still running.
+concurrency:
+  group: web-pages
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  TRUNK_VERSION: "0.21.14"
+  # Same craft-fonts commit the release pipeline uses (.github/workflows/release.yml).
+  CRAFT_FONTS_REF: 3d9ab3a132ed0eff457e424226a435a901da30d3
+
+jobs:
+  build:
+    name: Build (wasm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out craft-fonts
+        # A push build always has them; a manual run can turn them off for a quicker build.
+        if: github.event_name != 'workflow_dispatch' || inputs.craft-fonts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: storytold/craft-fonts
+          ref: ${{ env.CRAFT_FONTS_REF }}
+          path: craft-fonts
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: web-pages
+
+      - name: Install trunk
+        run: |
+          tar_url="https://github.com/trunk-rs/trunk/releases/download/v${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz"
+          curl --proto '=https' --proto-redir =https -fsSL -o "$RUNNER_TEMP/trunk.tar.gz" "$tar_url"
+          case "$TRUNK_VERSION" in
+            "0.21.14") expected="f2b4680cd239693a646a2795e4633c625328d7b2a044fbe749fa3a2fe9e7036b" ;;
+            *)
+              curl --proto '=https' --proto-redir =https -fsSL -o "$RUNNER_TEMP/trunk.sha256" "$tar_url.sha256"
+              expected=$(awk '{print $1}' "$RUNNER_TEMP/trunk.sha256") ;;
+          esac
+          echo "$expected  $RUNNER_TEMP/trunk.tar.gz" | sha256sum -c -
+          tar -xz -C "$HOME/.cargo/bin" -f "$RUNNER_TEMP/trunk.tar.gz" trunk
+          trunk --version
+
+      - name: Build the web app
+        working-directory: apps/vectorcraft-web
+        env:
+          # Empty when craft-fonts weren't checked out: build.rs and the Trunk hook treat it as unset.
+          CRAFT_FONTS_DIR: ${{ (github.event_name != 'workflow_dispatch' || inputs.craft-fonts) && format('{0}/craft-fonts', github.workspace) || '' }}
+        run: trunk build --release
+
+      - name: Check the site
+        run: |
+          set -euo pipefail
+          site=dist/web
+          test -f "$site/index.html"
+          # Pages serves the app under /<repo>/, so every URL must stay relative (Trunk public_url "./").
+          if grep -Eq '(src|href)="/[^/]' "$site/index.html"; then
+            echo "::error::$site/index.html has root-absolute URLs; it would break under a sub-path" >&2
+            exit 1
+          fi
+          # Pages' Jekyll pass would otherwise skip files and folders that start with an underscore.
+          touch "$site/.nojekyll"
+          ls -la "$site"
+          du -sh "$site"
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          # Switch Pages on for the repository when the token is allowed to; otherwise do it once by
+          # hand under Settings → Pages → Source: GitHub Actions.
+          enablement: true
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

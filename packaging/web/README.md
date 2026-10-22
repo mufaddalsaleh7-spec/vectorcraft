@@ -50,6 +50,16 @@ location /vectorcraft/ {
 
 Local test: `python3 -m http.server 8765` inside the folder, then open http://localhost:8765/.
 
+## GitHub Pages
+
+`.github/workflows/web-pages.yml` builds the site on GitHub Actions and publishes it to GitHub
+Pages at `https://<owner>.github.io/<repo>/`: no server of your own, HTTPS (so WebGPU works), gzip,
+and the right MIME types out of the box. One-time setup in the repository: **Settings → Actions**
+(forks start with workflows off) and **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. After that every push to the configured branches redeploys; **Actions → Web (GitHub
+Pages) → Run workflow** builds on demand (untick *craft-fonts* for a quicker build without
+Japanese and Arabic text).
+
 ## Fonts folder
 
 Builds made with craft-fonts (`CRAFT_FONTS_DIR`, all releases) have a `fonts/` folder beside the
