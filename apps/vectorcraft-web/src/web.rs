@@ -542,13 +542,32 @@ impl RecoveryStore for BrowserStore {
     }
 }
 
-/// Trigger a browser download of `bytes` named after the last component of `path`.
+/// Download `bytes` under the last component of `path`: Android's bundled WebView uses its
+/// native Save As picker; ordinary browsers use a blob URL and an anchor.
 fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
     let js = |e: wasm_bindgen::JsValue| format!("{e:?}");
     let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "vectorcraft".into());
+    let mime = fileio::format_for_name(&name).map_or("application/octet-stream", |f| f.mime);
     let window = web_sys::window().ok_or("no window")?;
+    let bridge = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("VectorCraftAndroid")).map_err(js)?;
+    if !bridge.is_null() && !bridge.is_undefined() {
+        let save = js_sys::Reflect::get(&bridge, &wasm_bindgen::JsValue::from_str("saveFile"))
+            .map_err(js)?
+            .dyn_into::<js_sys::Function>()
+            .map_err(js)?;
+        let data = vectorcraft_format::base64_encode(bytes);
+        save.call3(
+            &bridge,
+            &wasm_bindgen::JsValue::from_str(&name),
+            &wasm_bindgen::JsValue::from_str(mime),
+            &wasm_bindgen::JsValue::from_str(&data),
+        )
+        .map_err(js)?;
+        return Ok(());
+    }
+
     let document = window.document().ok_or("no document")?;
-    let url = blob_url(bytes, fileio::format_for_name(&name).map_or("application/octet-stream", |f| f.mime))?;
+    let url = blob_url(bytes, mime)?;
     let a: web_sys::HtmlAnchorElement = document.create_element("a").map_err(js)?.dyn_into().map_err(|_| "not an anchor")?;
     a.set_href(&url);
     a.set_download(&name);

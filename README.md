@@ -16,7 +16,8 @@
 
 <p align="center">
   A fast, open-source, clean-room take on the Adobe Illustrator workflow. It runs natively on
-  macOS, Windows, Linux and FreeBSD, and in the browser via WebAssembly. Built by the ArtCraft team.
+  macOS, Windows, Linux and FreeBSD, in the browser via WebAssembly, and experimentally on Android
+  in an offline WebView APK. Built by the ArtCraft team.
 </p>
 
 <p align="center">
@@ -307,6 +308,14 @@ Installers and executables are code-signed.
 | Build | File | Notes |
 |---|---|---|
 | Static site | `vectorcraft-web-<ver>.zip` | Runs in a modern browser; host it on any static server |
+
+### Android (experimental)
+
+The `Android APK` workflow builds an installable, debug-signed APK artifact named
+`vectorcraft-android-apk`. It bundles the touch-enabled WebAssembly edition for offline use; see
+[Android build and limitations](packaging/android/README.md). This is a WebView package, not a
+native Android port, and is currently distributed as a GitHub Actions artifact rather than a
+release installer.
 
 ## The Crafting Apps
 
