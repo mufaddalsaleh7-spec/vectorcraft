@@ -15,6 +15,14 @@ if (versionParts.size != 3) {
 }
 val androidVersionCode = versionParts[0] * 1_000_000 + versionParts[1] * 1_000 + versionParts[2]
 
+val releaseSigningValues = listOf(
+    providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull.orEmpty(),
+    providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull.orEmpty(),
+    providers.environmentVariable("ANDROID_KEY_ALIAS").orNull.orEmpty(),
+    providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull.orEmpty(),
+)
+val hasReleaseSigning = releaseSigningValues.all { it.isNotBlank() }
+
 val generatedIconResources = layout.buildDirectory.dir("generated/vectorcraft-icon-res")
 val copyLauncherIcon = tasks.register<Copy>("copyVectorCraftLauncherIcon") {
     from(rootProject.file("../../assets/app-icon/hicolor/512x512/apps/ai.storyteller.vectorcraft.png"))
@@ -35,12 +43,12 @@ val verifyWebAssets = tasks.register("verifyVectorCraftWebAssets") {
 
 android {
     namespace = "ai.storyteller.vectorcraft"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.storyteller.vectorcraft"
         minSdk = 23
-        targetSdk = 35
+        targetSdk = 36
         versionCode = androidVersionCode
         versionName = workspaceVersionName
     }
@@ -57,15 +65,39 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("playStore") {
+                storeFile = file(releaseSigningValues[0])
+                storePassword = releaseSigningValues[1]
+                keyAlias = releaseSigningValues[2]
+                keyPassword = releaseSigningValues[3]
+            }
+        }
+    }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("playStore")
+            }
         }
     }
 }
 
 tasks.named("preBuild").configure {
     dependsOn(copyLauncherIcon, verifyWebAssets)
+}
+
+tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    doFirst {
+        if (!hasReleaseSigning) {
+            throw GradleException(
+                "Play Store builds require ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD"
+            )
+        }
+    }
 }
 
 dependencies {

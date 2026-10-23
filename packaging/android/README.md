@@ -8,12 +8,12 @@ system file picker for opening and saving files.
 ## Build locally
 
 Install Rust (the workspace requires the version in `Cargo.toml`), Java 17, Android SDK platform
-35 and build tools 35.0.0, Gradle 8.11.1, and Trunk. Add the WebAssembly target if needed and make
-sure Gradle reports version 8.11.1:
+36 and build tools 36.0.0, Gradle 8.13, and Trunk. Add the WebAssembly target if needed and make
+sure Gradle reports version 8.13:
 
 ```sh
 rustup target add wasm32-unknown-unknown
-sdkmanager "platforms;android-35" "build-tools;35.0.0"
+sdkmanager "platforms;android-36" "build-tools;36.0.0"
 cargo install trunk --locked
 gradle --version
 packaging/android/build.sh
@@ -28,7 +28,45 @@ dist/android/vectorcraft-android-debug.apk
 
 The `Android APK` GitHub Actions workflow also builds the APK and uploads it as the artifact
 `vectorcraft-android-apk` for manual, push, and pull-request runs. Debug APKs can be installed on a
-device after allowing installation from the chosen file manager/browser.
+device after allowing installation from the chosen file manager/browser. A debug APK is for testing;
+it is not a Play Store upload.
+
+## Play Store App Bundle
+
+Google Play expects a signed Android App Bundle (`.aab`), not this debug APK. The project targets
+Android API 36 and includes a manual `Play Store AAB` workflow that creates a signed bundle using
+your private upload key. After these changes are merged to `main`, run that workflow from `main`; it
+does **not** publish to Google Play automatically.
+
+### Prepare a private upload key
+
+Create an upload key once and keep a secure offline backup. If you use Play App Signing, Google
+holds the app-signing key while this key signs uploads:
+
+```sh
+keytool -genkeypair -v -keystore vectorcraft-upload-key.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias vectorcraft-upload
+```
+
+Never commit the keystore or put its passwords in chat. For the GitHub workflow, add these under
+**Repository Settings → Secrets and variables → Actions**:
+
+- `ANDROID_KEYSTORE_BASE64`: base64 encoding of the `.jks` file (`base64 -w 0` on Linux; on macOS,
+  `base64 < vectorcraft-upload-key.jks | tr -d '\n'`).
+- `ANDROID_KEYSTORE_PASSWORD`: the keystore password.
+- `ANDROID_KEY_ALIAS`: `vectorcraft-upload` (or the alias you chose).
+- `ANDROID_KEY_PASSWORD`: the key password.
+
+Then go to **Actions → Play Store AAB → Run workflow**. Download the `vectorcraft-playstore-aab`
+artifact and upload its `.aab` to your app in Play Console. Locally, with `ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` set in the environment,
+run `packaging/android/build-play.sh`; it writes `dist/android/vectorcraft-<version>-play.aab`.
+
+Before submission, confirm you control the Play Console app entry and the package ID
+`ai.storyteller.vectorcraft`, and complete the store listing, privacy policy, data-safety and other
+Play Console declarations. Publishing and account verification must be done by the Play Console
+account owner. Uninstall the debug APK before installing a Play-distributed version signed with a
+different certificate.
 
 ## Mobile behavior and limits
 

@@ -312,10 +312,11 @@ Installers and executables are code-signed.
 ### Android (experimental)
 
 The `Android APK` workflow builds an installable, debug-signed APK artifact named
-`vectorcraft-android-apk`. It bundles the touch-enabled WebAssembly edition for offline use; see
-[Android build and limitations](packaging/android/README.md). This is a WebView package, not a
-native Android port, and is currently distributed as a GitHub Actions artifact rather than a
-release installer.
+`vectorcraft-android-apk`. For Google Play, the manual `Play Store AAB` workflow can build a signed
+App Bundle from your private upload key; it does not publish automatically. The app bundles the
+touch-enabled WebAssembly edition for offline use; see [Android build, Play Store setup and
+limitations](packaging/android/README.md). This is an experimental WebView package, not a native
+Android port.
 
 ## The Crafting Apps
 
