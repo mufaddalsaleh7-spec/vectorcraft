@@ -195,7 +195,9 @@ mod tests {
             let canvas = app.canvas_rect.expect("the real canvas is laid out");
             assert!(app.compact_layout, "{} × {} selects compact landscape", size.0, size.1);
             assert!(canvas.width() >= 400.0, "{} × {} canvas width: {canvas:?}", size.0, size.1);
-            assert!(canvas.height() >= 245.0, "{} × {} canvas height: {canvas:?}", size.0, size.1);
+            // App/document chrome, both status rows, the ruler and the document scroll bar stay
+            // present; even the shortest target retains well over 60% of its height for editing.
+            assert!(canvas.height() >= size.1 - 135.0, "{} × {} canvas height: {canvas:?}", size.0, size.1);
             assert!(canvas.left() >= 45.0 && canvas.right() <= size.0 - 220.0, "toolbar and expanded dock surround {canvas:?}");
 
             let nodes = out.platform_output.accesskit_update.as_ref().expect("an accessibility tree");
