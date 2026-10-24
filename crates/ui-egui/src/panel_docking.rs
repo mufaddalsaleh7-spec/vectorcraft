@@ -620,6 +620,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
     }
     let layout = layout.clone();
     let t = crate::theme::Tokens::get(ui.ctx());
+    let compact = crate::responsive::compact(ui.ctx());
     let metrics = crate::responsive::dock_metrics(ui.ctx());
     let collapsed = app.ui.dock_collapsed;
     let mut display = if collapsed { Layout { root: None, floating: layout.floating.clone() } } else { layout.clone() };
@@ -678,7 +679,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
             &style,
             |id| crate::state::all_panels().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone()),
             |_| craft_ui::docking::Permissions::default(),
-            |_| craft_ui::docking::PanelLimits { min: egui::vec2(metrics.min_width, 80.0), ..Default::default() },
+            |_| craft_ui::docking::PanelLimits { min: egui::vec2(if compact { metrics.min_width } else { 220.0 }, 80.0), ..Default::default() },
             &mut content,
         );
         for (id, params) in content.commands {
@@ -689,9 +690,9 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
         output
     };
     let output = if layout.root.is_some() {
-        let panel = egui::Panel::right(if crate::responsive::compact(ui.ctx()) { "shared-panel-dock-compact" } else { "shared-panel-dock" })
-            .default_size(if crate::responsive::compact(ui.ctx()) { metrics.default_width } else { 310.0 })
-            .size_range(metrics.min_width..=if crate::responsive::compact(ui.ctx()) { metrics.max_width } else { 720.0 })
+        let panel = egui::Panel::right(if compact { "shared-panel-dock-compact" } else { "shared-panel-dock" })
+            .default_size(if compact { metrics.default_width } else { 310.0 })
+            .size_range((if compact { metrics.min_width } else { 220.0 })..=if compact { metrics.max_width } else { 720.0 })
             .resizable(true)
             .frame(egui::Frame::NONE);
         let panel = if collapsed { panel.exact_size(metrics.icon_column).resizable(false) } else { panel };

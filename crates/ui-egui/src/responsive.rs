@@ -117,9 +117,12 @@ pub(crate) fn panel_flyout_top(ctx: &egui::Context, control_bar: bool) -> f32 {
 }
 
 /// Maximum scrollable body size for a modal on a short viewport.
-pub(crate) fn modal_max_size(ctx: &egui::Context) -> Vec2 {
-    let size = ctx.content_rect().size() - vec2(24.0, 20.0);
-    vec2(size.x.max(160.0), size.y.max(120.0))
+pub(crate) fn modal_max_size(ctx: &egui::Context, margin: i8) -> Vec2 {
+    // The ScrollArea is inside the window frame. Reserve both inner margins and a little room for
+    // the frame/shadow so a dialog's outer rect, not only its scrolling body, stays on screen.
+    let outer = f32::from(margin).max(0.0) * 2.0 + 16.0;
+    let size = ctx.content_rect().size() - vec2(outer, outer);
+    vec2(size.x.max(160.0), size.y.max(64.0))
 }
 
 #[cfg(test)]
@@ -153,6 +156,8 @@ mod tests {
             // still leave a useful central document window at every target size.
             assert!(w - 54.0 - m.default_width - m.icon_column >= 430.0, "{w} × {h}: {m:?}");
             assert!(app_bar_height(&ctx) + document_tabs_height(&ctx, false) + status_bar_height(&ctx) + hint_bar_height(&ctx) <= 100.0);
+            let dialog = modal_max_size(&ctx, 12);
+            assert!(dialog.x + 40.0 <= w && dialog.y + 40.0 <= h, "dialog body {dialog:?} at {w} × {h}");
         }
     }
 

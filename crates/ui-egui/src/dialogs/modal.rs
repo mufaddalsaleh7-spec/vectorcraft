@@ -17,6 +17,8 @@ pub(crate) fn show<R>(ctx: &egui::Context, title: &str, id: Id, nudge: f32, marg
 /// A modal that starts at a chosen offset, then keeps the user's dragged position.
 pub(crate) fn show_at<R>(ctx: &egui::Context, title: &str, id: Id, initial: Vec2, margin: i8, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
     let t = Tokens::get(ctx);
+    let compact = crate::responsive::compact(ctx);
+    let frame_margin = if compact { margin.min(12) } else { margin };
     let dim = backdrop();
     egui::Area::new(dim.id).order(dim.order).fixed_pos(egui::Pos2::ZERO).show(ctx, |ui| {
         // Modal, but the canvas isn't dimmed so previews stay readable (as in the reference app).
@@ -29,10 +31,10 @@ pub(crate) fn show_at<R>(ctx: &egui::Context, title: &str, id: Id, initial: Vec2
         .resizable(false)
         .title_bar(false)
         .anchor(egui::Align2::CENTER_CENTER, offset(ctx, id, initial))
-        .frame(egui::Frame::window(&ctx.global_style()).fill(t.panel).inner_margin(egui::Margin::same(margin)))
+        .frame(egui::Frame::window(&ctx.global_style()).fill(t.panel).inner_margin(egui::Margin::same(frame_margin)))
         .show(ctx, |ui| {
-            if crate::responsive::compact(ctx) {
-                let max = crate::responsive::modal_max_size(ctx);
+            if compact {
+                let max = crate::responsive::modal_max_size(ctx, frame_margin);
                 // Dialogs keep their desktop form. A short phone viewport scrolls that form rather
                 // than clipping its lower buttons or forcing page-level scrolling.
                 egui::ScrollArea::both().max_width(max.x).max_height(max.y).auto_shrink([true, true]).show(ui, add).inner

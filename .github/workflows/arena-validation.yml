@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
@@ -31,12 +31,39 @@ jobs:
       - name: Formatting
         run: cargo fmt --all -- --check
       - name: Responsive editor tests
-        run: cargo test -p vectorcraft-ui-egui responsive::tests --lib
+        run: |
+          set -o pipefail
+          if ! cargo test -p vectorcraft-ui-egui responsive::tests --lib 2>&1 | tee /tmp/responsive-tests.log; then
+            message="$(tail -n 60 /tmp/responsive-tests.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::error file=crates/ui-egui/src/responsive.rs,line=1,title=Responsive editor tests failed::$message"
+            exit 1
+          fi
       - name: Engine coarse-pointer test
-        run: cargo test -p vectorcraft-engine coarse_pointer --lib
+        run: cargo test -p vectorcraft-engine selection_preferences_drive_the_selection_tool --lib
+      - name: Web pointer-routing tests
+        run: cargo test -p vectorcraft-web --bin vectorcraft-web
       - name: Web touch input check
         run: cargo check --target wasm32-unknown-unknown -p vectorcraft-web
-      - name: Workspace check
-        run: cargo check --workspace --all-targets
-      - name: Changed crates clippy
-        run: cargo clippy -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft-web --all-targets -- -D warnings
+      - name: Full project quality gate
+        run: |
+          set -o pipefail
+          if ! cargo xtask ci 2>&1 | tee /tmp/quality-gate.log; then
+            message="$(tail -n 60 /tmp/quality-gate.log | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}')"
+            echo "::error file=AGENTS.md,line=58,title=Full project quality gate failed::$message"
+            exit 1
+          fi
+      - name: Build browser preview
+        run: |
+          curl --fail --location --retry 5 --output /tmp/trunk.tar.gz https://github.com/trunk-rs/trunk/releases/download/v0.22.0/trunk-x86_64-unknown-linux-gnu.tar.gz
+          mkdir /tmp/trunk
+          tar -xzf /tmp/trunk.tar.gz -C /tmp/trunk
+          sudo install "$(find /tmp/trunk -type f -name trunk -print -quit)" /usr/local/bin/trunk
+          cd apps/vectorcraft-web
+          trunk build --release
+      - name: Upload browser preview
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vectorcraft-landscape-preview
+          path: dist/web
+          if-no-files-found: error
+          retention-days: 3

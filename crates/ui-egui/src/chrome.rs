@@ -282,6 +282,22 @@ fn isolation_button(app: &mut VectorcraftApp, ui: &mut Ui) {
 /// The room the Control bar's inline X/Y/W/H fields need; with less, only the Transform link shows.
 const INLINE_TRANSFORM_WIDTH: f32 = 440.0;
 
+fn control_bar_strip(ui: &mut Ui, compact: bool, add_contents: impl FnOnce(&mut Ui)) {
+    let horizontal = |ui: &mut Ui| {
+        ui.horizontal_centered(add_contents);
+    };
+    if compact {
+        // Keep every desktop context control reachable instead of clipping the later ones. The
+        // bar scrolls internally under a finger and never makes the browser page scroll.
+        egui::ScrollArea::horizontal()
+            .id_salt("compact-control-bar")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+            .show(ui, horizontal);
+    } else {
+        horizontal(ui);
+    }
+}
+
 /// The Control bar (Window → Control), context-sensitive like Illustrator's.
 pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
@@ -292,7 +308,7 @@ pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
             egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(if compact { 6 } else { 10 }, 0)).stroke(Stroke::new(1.0, t.border)),
         )
         .show(ui, |ui| {
-            ui.horizontal_centered(|ui| {
+            control_bar_strip(ui, compact, |ui| {
                 // Gripper
                 let (g, _) = ui.allocate_exact_size(vec2(6.0, 20.0), Sense::hover());
                 for i in 0..5 {

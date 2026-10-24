@@ -13,7 +13,8 @@ use crate::{VectorcraftApp, floating, icons, panels, widgets};
 
 #[cfg(test)]
 const ICON_COL: f32 = 38.0;
-/// Height of the strip along the top of a dock column that carries its double arrow.
+/// Desktop height of the strip along the top of a dock column that carries its double arrow.
+#[cfg(test)]
 const HEADER: f32 = 14.0;
 /// The tabbed group's width until the dock has been laid out (its default size).
 const DOCK_WIDTH: f32 = 300.0;
@@ -46,7 +47,8 @@ pub(crate) fn collapse_header(ui: &mut Ui, collapsed: bool) -> bool {
     let metrics = crate::responsive::dock_metrics(ui.ctx());
     let (hdr, resp) = ui.allocate_exact_size(vec2(ui.available_width(), metrics.header), Sense::click());
     let icon_size = if crate::responsive::compact(ui.ctx()) { 16.0 } else { 12.0 };
-    let arrow = Rect::from_center_size(hdr.right_center() - vec2(if metrics.header > HEADER { 10.0 } else { 8.0 }, 0.0), vec2(icon_size, icon_size));
+    // The desktop arrow keeps its original right edge; the taller compact header grows around it.
+    let arrow = Rect::from_center_size(hdr.right_center() - vec2(10.0, 0.0), vec2(icon_size, icon_size));
     if resp.hovered() {
         ui.painter().rect_filled(arrow, CornerRadius::same(2), t.hover);
     }
@@ -341,8 +343,17 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     // that keeps the flyout on screen.
     let width = panel_width(id);
     let flyout_top = crate::responsive::panel_flyout_top(ctx, app.ui.control_bar);
-    let available = (screen.bottom() - flyout_top - 26.0 - 20.0 - 14.0).max(96.0);
-    let tall = available.min(560.0);
+    let tall = if crate::responsive::compact(ctx) {
+        let footer = if app.ui.status_bar && app.ui.screen_mode < 3 {
+            crate::responsive::status_bar_height(ctx) + crate::responsive::hint_bar_height(ctx)
+        } else {
+            0.0
+        };
+        (screen.bottom() - flyout_top - 26.0 - 20.0 - footer - 8.0).clamp(96.0, 560.0)
+    } else {
+        // Preserve the desktop flyout's original clearance and minimum height exactly.
+        (screen.height() - flyout_top - 26.0 - 20.0 - 40.0).clamp(160.0, 560.0)
+    };
     let mut open = true;
     let mut torn = None;
     let area = egui::Area::new(egui::Id::new("icon-panel")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP);
