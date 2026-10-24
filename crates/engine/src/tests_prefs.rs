@@ -255,17 +255,23 @@ fn selection_preferences_drive_the_selection_tool() {
     let (back, front) = (rect(&mut s, 100.0), rect(&mut s, 150.0));
     s.select_tool("selection", ViewInfo::default()).unwrap();
     let set = |s: &mut Session, key: &str, value: Value| s.execute("prefs.set", &json!({"key": key, "value": value})).unwrap();
-    let click = |s: &mut Session, x: f64, mods: Mods| {
+    let click_with = |s: &mut Session, x: f64, mods: Mods, view: ViewInfo| {
         for k in [PointerKind::Down, PointerKind::Up] {
             // Halfway between the bounding box's handles.
-            s.pointer(&PointerEvent::new(k, x, 125.0).with_mods(mods), ViewInfo::default()).unwrap();
+            s.pointer(&PointerEvent::new(k, x, 125.0).with_mods(mods), view).unwrap();
         }
         s.doc().unwrap().selection.objects.clone()
     };
+    let click = |s: &mut Session, x: f64, mods: Mods| click_with(s, x, mods, ViewInfo::default());
     let plain = Mods::default();
     // Tolerance: the right edge's stroke ends at x = 250.5.
     assert_eq!(click(&mut s, 252.5, plain), vec![front], "2 px out: within the default 3 px");
     assert!(click(&mut s, 256.5, plain).is_empty(), "6 px out: beyond 3 px");
+    assert_eq!(
+        click_with(&mut s, 256.5, plain, ViewInfo { coarse_pointer: true, ..ViewInfo::default() }),
+        vec![front],
+        "a finger gets at least an 8 px invisible picking radius",
+    );
     set(&mut s, "selectionTolerance", json!(8));
     assert_eq!(click(&mut s, 256.5, plain), vec![front], "6 px out: within 8 px");
     set(&mut s, "selectionTolerance", json!(1));

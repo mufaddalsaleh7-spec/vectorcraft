@@ -1,0 +1,42 @@
+name: Arena responsive validation
+
+on:
+  push:
+    branches: [arena/cd315103-vectorcraft]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arena-responsive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev mesa-vulkan-drivers libgl1-mesa-dev
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Responsive editor tests
+        run: cargo test -p vectorcraft-ui-egui responsive::tests --lib
+      - name: Engine coarse-pointer test
+        run: cargo test -p vectorcraft-engine coarse_pointer --lib
+      - name: Web touch input check
+        run: cargo check --target wasm32-unknown-unknown -p vectorcraft-web
+      - name: Workspace check
+        run: cargo check --workspace --all-targets
+      - name: Changed crates clippy
+        run: cargo clippy -p vectorcraft-ui-egui -p vectorcraft-engine -p vectorcraft-web --all-targets -- -D warnings

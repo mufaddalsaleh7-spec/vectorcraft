@@ -50,6 +50,12 @@ pub fn pen_seen() -> bool {
     PEN_SEEN.with(Cell::get)
 }
 
+/// The current pointer is a finger. Frontends use this to give object and anchor picking a larger
+/// invisible hit radius without enlarging the desktop UI.
+pub fn coarse_pointer() -> bool {
+    SOURCE.with(Cell::get) == Source::Finger
+}
+
 /// The press in progress is a finger's while a pen has been seen: it navigates, it doesn't draw.
 pub(crate) fn finger_navigates_only() -> bool {
     SOURCE.with(Cell::get) == Source::Finger && pen_seen()
@@ -180,13 +186,14 @@ mod tests {
     fn fingers_navigate_only_once_a_pen_was_seen() {
         set_pen_seen(false);
         set_source(Source::Finger);
+        assert!(coarse_pointer());
         assert!(!finger_navigates_only(), "no pen yet: a finger draws");
         set_source(Source::Pen);
-        assert!(pen_seen() && !finger_navigates_only());
+        assert!(pen_seen() && !coarse_pointer() && !finger_navigates_only());
         set_source(Source::Finger);
-        assert!(finger_navigates_only());
+        assert!(coarse_pointer() && finger_navigates_only());
         set_source(Source::Mouse);
-        assert!(!finger_navigates_only(), "a mouse still draws");
+        assert!(!coarse_pointer() && !finger_navigates_only(), "a mouse still draws");
         set_pen_seen(false);
     }
 }

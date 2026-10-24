@@ -46,6 +46,7 @@ pub mod prefs_dialog;
 pub mod print;
 pub mod recovery;
 pub mod render_worker;
+mod responsive;
 pub mod screen_color;
 mod scrub;
 pub mod shortcut_editor;
@@ -399,6 +400,9 @@ pub struct VectorcraftApp {
     last_time: f64,
     /// Canvas rect of the last frame (screen points), for control-channel coordinate mapping.
     pub canvas_rect: Option<egui::Rect>,
+    /// The current viewport uses the short landscape workspace. Kept outside `UiState`: rotating or
+    /// resizing recomputes it and never rewrites the user's saved desktop workspace.
+    compact_layout: bool,
     /// Hover position in document coordinates.
     pub hover_doc: Option<vectorcraft_geom::Point>,
     /// System clipboard: SVG to publish next frame, the last SVG we published (so pasting it back
@@ -534,6 +538,7 @@ impl VectorcraftApp {
             frame: 0,
             last_time: 0.0,
             canvas_rect: None,
+            compact_layout: false,
             hover_doc: None,
             custom_titlebar: false,
             last_window_title: String::new(),
@@ -657,7 +662,15 @@ impl VectorcraftApp {
             corner_widgets: self.ui.view.corner_widgets && self.ui.view.edges,
             screen: self.screen_frame(),
             artboard: self.view().map_or(0, |v| v.artboard),
+            coarse_pointer: self.coarse_pointer(),
         }
+    }
+
+    /// A finger is operating the canvas, or the viewport is a phone-height landscape workspace.
+    /// Pens remain precise even on a phone; the compact-layout fallback covers touch-only browsers
+    /// before their first pointer event reaches the app.
+    pub(crate) fn coarse_pointer(&self) -> bool {
+        touch::coarse_pointer() || self.compact_layout && !touch::pen_seen()
     }
 
     /// The canvas on screen in document coordinates (none before it is laid out).
@@ -1366,6 +1379,8 @@ impl VectorcraftApp {
             return;
         }
         let t0 = now_ms();
+        let mode = responsive::begin_frame(ui);
+        self.compact_layout = mode == responsive::Mode::CompactLandscape;
         widgets::set_dialog_open(&ctx, self.ui.dialog.is_some());
         scrub::begin_frame(self, &ctx);
         font_menu::end_stale_preview(self, &ctx);

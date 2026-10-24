@@ -27,83 +27,121 @@ const WIDGET_H: f32 = 22.0;
 /// title, so the in-app bar shows Home, menus and workspace controls only: no brand mark.
 pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let compact = crate::responsive::compact(ui.ctx());
     let custom = app.custom_titlebar;
     let system = system_title_bar(app);
-    let left = app.titlebar_inset.clamp(8.0, f32::from(i8::MAX)) as i8;
-    let frame = egui::Frame::NONE.fill(t.app_bar).inner_margin(egui::Margin { left, right: if custom { 0 } else { 14 }, top: 0, bottom: 0 });
-    let bar = egui::Panel::top("app_bar").exact_size(APP_BAR_HEIGHT).frame(frame.stroke(Stroke::new(1.0, t.border))).show(ui, |ui| {
-        // macOS draws the bar under its transparent title bar, so the bar gets the title bar's
-        // clicks: without this a double-click there zooms nothing (#1932).
-        if custom || cfg!(target_os = "macos") {
-            titlebar::drag_area(ui, ui.max_rect());
-        }
-        ui.horizontal_centered(|ui| {
-            // With the system title bar the OS draws its own icon: no in-app brand mark.
-            if !system {
-                let (r, _) = ui.allocate_exact_size(vec2(MARK, MARK), Sense::hover());
-                crate::brand::paint_mark(ui, r);
-                ui.add_space(6.0);
-            }
-            let on_home = menus::home_showing(app);
-            if widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
-                app.run("app.home", json!({})).ok();
-            }
-            ui.add_space(2.0);
-            // With the macOS menu bar the menus are at the top of the screen instead.
-            let menus_end = if app.services.native_menu.is_some() { ui.cursor().min.x } else { menus::menu_bar(app, ui) };
-            // The right-side group fills the space after the menus from the right; when it runs
-            // short, Discord goes first (it is also under Help), then the search icon (the palette
-            // stays under its shortcut), then the workspace switcher narrows.
-            let full = ui.max_rect();
-            let right_edge = if custom { full.right() - titlebar::WIDTH - 10.0 } else { full.right() };
-            let right = egui::Rect::from_min_max(egui::pos2(menus_end + 8.0, full.top()), egui::pos2(right_edge, full.bottom()));
-            let room = right.width();
-            // Built-in workspace names translate; the user's own stay as typed.
-            let ws_name =
-                if crate::workspaces::is_builtin(&app.ui.workspace) { tl!(&app.ui.workspace).to_string() } else { app.ui.workspace.clone() };
-            let ws = ui.painter().layout_no_wrap(ws_name, egui::FontId::proportional(12.0), t.text);
-            let ws_w = (ws.size().x + 36.0).clamp(112.0, 190.0);
-            let gap = ui.spacing().item_spacing.x;
-            // The search icon, as in PhotoCraft: shown while a minimal switcher fits beside it.
-            let icon = 28.0;
-            let search = room >= 64.0 + 8.0 + gap + icon;
-            let ws_w = ws_w.min(room - 8.0 - gap - if search { icon } else { 0.0 }).max(64.0);
-            let discord = search && room >= ws_w + 8.0 + gap + icon + 10.0 + gap + crate::community::discord_width(ui, false);
-            let mut rui = ui.new_child(egui::UiBuilder::new().max_rect(right).layout(egui::Layout::right_to_left(egui::Align::Center)));
-            let ui = &mut rui;
-            // Workspace switcher: shows the current workspace, opens Window → Workspace.
-            let (wr, wresp) = ui.allocate_exact_size(vec2(ws_w, WIDGET_H), Sense::click());
-            ui.painter().rect_filled(wr, CornerRadius::same(4), if wresp.hovered() { t.hover } else { t.panel });
-            ui.painter().with_clip_rect(wr.shrink2(vec2(4.0, 0.0))).galley(wr.left_center() + vec2(10.0, -ws.size().y / 2.0), ws, t.text);
-            icons::paint(ui, "chevron-down", egui::Rect::from_center_size(wr.right_center() - vec2(12.0, 0.0), vec2(12.0, 12.0)), t.text_dim);
-            let wresp = wresp.on_hover_text(tl!("Switch workspace"));
-            egui::Popup::menu(&wresp).show(|ui| crate::workspaces::popup(app, ui));
-            ui.add_space(8.0);
-            // Search → command palette (its shortcut opens it too).
-            if search {
-                let tip = match menus::shortcut_of("help.commandPalette") {
-                    Some(sc) => format!("{}  ({})", tl!("Search commands and tools"), menus::pretty_shortcut(sc)),
-                    None => tl!("Search commands and tools").to_string(),
-                };
-                if widgets::icon_button(ui, "search", &tip, app.ui.palette_open, icon).clicked() {
-                    app.ui.palette_open = !app.ui.palette_open;
-                    app.ui.palette_query.clear();
-                }
-            }
-            if discord {
-                ui.add_space(10.0);
-                crate::community::discord_button(app, ui, false);
-            }
-            if app.services.native_menu.is_some() {
-                let title = ui.painter().layout_no_wrap("VectorCraft".into(), egui::FontId::proportional(13.5), t.text);
-                let title_rect = egui::Rect::from_center_size(full.center(), title.size());
-                // Keep the title centered only while the interactive groups leave room for it.
-                if title_rect.left() >= menus_end + 8.0 && title_rect.right() <= ui.min_rect().left() - 8.0 {
-                    ui.painter().galley(title_rect.min, title, t.text);
-                }
-            }
-        });
+    let min_left = if compact { 4.0 } else { 8.0 };
+    let left = app.titlebar_inset.clamp(min_left, f32::from(i8::MAX)) as i8;
+    let frame = egui::Frame::NONE.fill(t.app_bar).inner_margin(egui::Margin {
+        left,
+        right: if custom {
+            0
+        } else if compact {
+            4
+        } else {
+            14
+        },
+        top: 0,
+        bottom: 0,
     });
+    let bar = egui::Panel::top("app_bar")
+        .exact_size(crate::responsive::app_bar_height(ui.ctx()))
+        .frame(frame.stroke(Stroke::new(1.0, t.border)))
+        .show(ui, |ui| {
+            // macOS draws the bar under its transparent title bar, so the bar gets the title bar's
+            // clicks: without this a double-click there zooms nothing (#1932).
+            if custom || cfg!(target_os = "macos") {
+                titlebar::drag_area(ui, ui.max_rect());
+            }
+            ui.horizontal_centered(|ui| {
+                // With the system title bar the OS draws its own icon: no in-app brand mark.
+                if !system {
+                    let mark = if compact { 16.0 } else { MARK };
+                    let (r, _) = ui.allocate_exact_size(vec2(mark, mark), Sense::hover());
+                    crate::brand::paint_mark(ui, r);
+                    ui.add_space(if compact { 3.0 } else { 6.0 });
+                }
+                let on_home = menus::home_showing(app);
+                if widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
+                    app.run("app.home", json!({})).ok();
+                }
+                ui.add_space(2.0);
+                // With the macOS menu bar the menus are at the top of the screen instead.
+                let menus_end = if app.services.native_menu.is_some() { ui.cursor().min.x } else { menus::menu_bar(app, ui) };
+                // The right-side group fills the space after the menus from the right; when it runs
+                // short, Discord goes first (it is also under Help), then the search icon (the palette
+                // stays under its shortcut), then the workspace switcher narrows.
+                let full = ui.max_rect();
+                let right_edge = if custom { full.right() - titlebar::WIDTH - 10.0 } else { full.right() };
+                let right_start = (menus_end + if compact { 3.0 } else { 8.0 }).min(right_edge);
+                let right = egui::Rect::from_min_max(egui::pos2(right_start, full.top()), egui::pos2(right_edge, full.bottom()));
+                let room = right.width().max(0.0);
+                // Built-in workspace names translate; the user's own stay as typed.
+                let ws_name =
+                    if crate::workspaces::is_builtin(&app.ui.workspace) { tl!(&app.ui.workspace).to_string() } else { app.ui.workspace.clone() };
+                let ws = ui.painter().layout_no_wrap(ws_name, egui::FontId::proportional(12.0), t.text);
+                let gap = ui.spacing().item_spacing.x;
+                let icon = 28.0;
+                // In compact landscape the switcher keeps all its functionality as a desktop-style
+                // icon button. Its full name is still in the tooltip and popup, while every menu title
+                // gets priority on the short bar.
+                let desired_ws = if compact { 32.0 } else { (ws.size().x + 36.0).clamp(112.0, 190.0) };
+                let search = !compact && room >= 64.0 + 8.0 + gap + icon;
+                let available_ws = (room - if search { 8.0 + gap + icon } else { 0.0 }).max(0.0);
+                let ws_w = desired_ws.min(available_ws);
+                let discord = !compact && search && room >= ws_w + 8.0 + gap + icon + 10.0 + gap + crate::community::discord_width(ui, false);
+                let mut rui = ui.new_child(egui::UiBuilder::new().max_rect(right).layout(egui::Layout::right_to_left(egui::Align::Center)));
+                let ui = &mut rui;
+                if ws_w >= 24.0 {
+                    // Workspace switcher: shows the current workspace, opens Window → Workspace.
+                    let (wr, wresp) = ui.allocate_exact_size(vec2(ws_w, WIDGET_H), Sense::click());
+                    ui.painter().rect_filled(wr, CornerRadius::same(4), if wresp.hovered() { t.hover } else { t.panel });
+                    if compact {
+                        icons::paint(ui, "layout-grid", egui::Rect::from_center_size(wr.center() - vec2(2.0, 0.0), vec2(14.0, 14.0)), t.text);
+                        icons::paint(
+                            ui,
+                            "chevron-down",
+                            egui::Rect::from_center_size(wr.right_center() - vec2(5.0, 0.0), vec2(8.0, 8.0)),
+                            t.text_dim,
+                        );
+                    } else {
+                        ui.painter().with_clip_rect(wr.shrink2(vec2(4.0, 0.0))).galley(wr.left_center() + vec2(10.0, -ws.size().y / 2.0), ws, t.text);
+                        icons::paint(
+                            ui,
+                            "chevron-down",
+                            egui::Rect::from_center_size(wr.right_center() - vec2(12.0, 0.0), vec2(12.0, 12.0)),
+                            t.text_dim,
+                        );
+                    }
+                    let wresp = wresp.on_hover_text(format!("{}: {ws_name}", tl!("Switch workspace")));
+                    egui::Popup::menu(&wresp).show(|ui| crate::workspaces::popup(app, ui));
+                    ui.add_space(if compact { 2.0 } else { 8.0 });
+                }
+                // Search → command palette (its shortcut opens it too).
+                if search {
+                    let tip = match menus::shortcut_of("help.commandPalette") {
+                        Some(sc) => format!("{}  ({})", tl!("Search commands and tools"), menus::pretty_shortcut(sc)),
+                        None => tl!("Search commands and tools").to_string(),
+                    };
+                    if widgets::icon_button(ui, "search", &tip, app.ui.palette_open, icon).clicked() {
+                        app.ui.palette_open = !app.ui.palette_open;
+                        app.ui.palette_query.clear();
+                    }
+                }
+                if discord {
+                    ui.add_space(10.0);
+                    crate::community::discord_button(app, ui, false);
+                }
+                if app.services.native_menu.is_some() {
+                    let title = ui.painter().layout_no_wrap("VectorCraft".into(), egui::FontId::proportional(13.5), t.text);
+                    let title_rect = egui::Rect::from_center_size(full.center(), title.size());
+                    // Keep the title centered only while the interactive groups leave room for it.
+                    if title_rect.left() >= menus_end + 8.0 && title_rect.right() <= ui.min_rect().left() - 8.0 {
+                        ui.painter().galley(title_rect.min, title, t.text);
+                    }
+                }
+            });
+        });
     if custom {
         titlebar::caption_buttons(app, ui, bar.response.rect);
     }
@@ -247,9 +285,12 @@ const INLINE_TRANSFORM_WIDTH: f32 = 440.0;
 /// The Control bar (Window → Control), context-sensitive like Illustrator's.
 pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let compact = crate::responsive::compact(ui.ctx());
     egui::Panel::top("control_bar")
-        .exact_size(34.0)
-        .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(10, 0)).stroke(Stroke::new(1.0, t.border)))
+        .exact_size(crate::responsive::control_bar_height(ui.ctx()))
+        .frame(
+            egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(if compact { 6 } else { 10 }, 0)).stroke(Stroke::new(1.0, t.border)),
+        )
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 // Gripper
@@ -422,7 +463,15 @@ pub fn doc_tabs(app: &mut VectorcraftApp, ui: &mut Ui) {
     /// The width of the » button.
     const MORE: f32 = 30.0;
     let t = Tokens::get(ui.ctx());
-    let (height, title_size) = if app.session.prefs.large_tabs { (44.0, 14.0) } else { (35.0, 12.5) };
+    let compact = crate::responsive::compact(ui.ctx());
+    let height = crate::responsive::document_tabs_height(ui.ctx(), app.session.prefs.large_tabs);
+    let title_size = if app.session.prefs.large_tabs {
+        if compact { 13.0 } else { 14.0 }
+    } else if compact {
+        12.0
+    } else {
+        12.5
+    };
     let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
     ui.painter().rect_filled(strip, 0.0, t.tab_strip);
     ui.painter().line_segment([strip.left_bottom(), strip.right_bottom()], Stroke::new(1.0, t.border));
@@ -440,7 +489,7 @@ pub fn doc_tabs(app: &mut VectorcraftApp, ui: &mut Ui) {
             (title.clone(), ui.painter().layout_no_wrap(title, theme::semibold(title_size), color))
         })
         .collect();
-    let widths: Vec<f32> = tabs.iter().map(|(_, g)| g.size().x + 50.0).collect();
+    let widths: Vec<f32> = tabs.iter().map(|(_, g)| g.size().x + if compact { 40.0 } else { 50.0 }).collect();
     let overflow = widths.iter().sum::<f32>() > strip.width();
     let room = strip.width() - if overflow { MORE } else { 0.0 };
     let first = if overflow { first_tab_shown(&widths, active, room) } else { 0 };
@@ -565,7 +614,7 @@ pub fn doc_tabs(app: &mut VectorcraftApp, ui: &mut Ui) {
 /// them, and opens with the active artboard's row in view. The list lays out only the rows in view
 /// and at most one more. Returns the artboard chosen in the list.
 fn artboard_list(app: &VectorcraftApp, ui: &mut Ui, cur: usize) -> Option<usize> {
-    /// The width of the field.
+    /// The desktop width of the field (compact landscape keeps the number and truncates its name).
     const FIELD_W: f32 = 140.0;
     /// The least width of the list.
     const LIST_W: f32 = 220.0;
@@ -574,16 +623,17 @@ fn artboard_list(app: &VectorcraftApp, ui: &mut Ui, cur: usize) -> Option<usize>
     /// The rows the list shows at once.
     const ROWS: f32 = 10.0;
     let t = Tokens::get(ui.ctx());
+    let field_w = if crate::responsive::compact(ui.ctx()) { 82.0 } else { FIELD_W };
     let boards = app.session.active().map(|d| d.doc.artboards.as_slice()).unwrap_or_default();
     let shown = boards.get(cur).map_or_else(|| "–".to_string(), |a| format!("{}  {}", cur + 1, a.name));
     // Under `drawn`, egui's temp data stores the pass the list was last drawn in.
     let drawn = ui.id().with("artboard-list");
     let height = ROW_H * ROWS;
     ui.add_enabled_ui(!boards.is_empty(), |ui| {
-        ui.set_max_width(FIELD_W);
+        ui.set_max_width(field_w);
         egui::ComboBox::from_id_salt("artboard-list")
             .selected_text(egui::RichText::new(shown).size(11.5))
-            .width(FIELD_W)
+            .width(field_w)
             .wrap_mode(egui::TextWrapMode::Truncate)
             .height(height)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -647,15 +697,19 @@ fn artboard_list(app: &VectorcraftApp, ui: &mut Ui, cur: usize) -> Option<usize>
 
 pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let compact = crate::responsive::compact(ui.ctx());
     egui::Panel::bottom("status_bar")
-        .exact_size(24.0)
-        .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(8, 0)).stroke(Stroke::new(1.0, t.border)))
+        .exact_size(crate::responsive::status_bar_height(ui.ctx()))
+        .frame(
+            egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(if compact { 4 } else { 8 }, 0)).stroke(Stroke::new(1.0, t.border)),
+        )
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 let zoom = app.view().map(|v| v.zoom).unwrap_or(1.0);
-                egui::ComboBox::from_id_salt("zoom-combo").selected_text(egui::RichText::new(zoom_label(zoom)).size(11.5)).width(76.0).show_ui(
-                    ui,
-                    |ui| {
+                egui::ComboBox::from_id_salt("zoom-combo")
+                    .selected_text(egui::RichText::new(zoom_label(zoom)).size(11.5))
+                    .width(if compact { 62.0 } else { 76.0 })
+                    .show_ui(ui, |ui| {
                         for z in ZOOM_STOPS.iter().rev() {
                             if ui.selectable_label((z / 100.0 - zoom).abs() < 1e-4, zoom_label(z / 100.0)).clicked() {
                                 app.run("view.setZoom", json!({"zoom": z})).ok();
@@ -668,20 +722,19 @@ pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                         if ui.selectable_label(false, tl!("Fit All")).clicked() {
                             app.run("view.fitAll", json!({})).ok();
                         }
-                    },
-                );
+                    });
                 let rot = app.view().map(|v| v.rotation).unwrap_or(0.0);
-                egui::ComboBox::from_id_salt("rot-combo").selected_text(egui::RichText::new(format!("{rot:.0}°")).size(11.5)).width(52.0).show_ui(
-                    ui,
-                    |ui| {
+                egui::ComboBox::from_id_salt("rot-combo")
+                    .selected_text(egui::RichText::new(format!("{rot:.0}°")).size(11.5))
+                    .width(if compact { 42.0 } else { 52.0 })
+                    .show_ui(ui, |ui| {
                         for (label, a) in ROTATE_VIEW_ANGLES {
                             if ui.selectable_label((rot - a).abs() < 1e-9, label).clicked() {
                                 // It fails only without a document, when there is no view to turn.
                                 app.run("view.rotate", json!({"angle": a})).ok();
                             }
                         }
-                    },
-                );
+                    });
                 ui.separator();
                 // The artboard navigator has First and Previous, a field with the current artboard's
                 // number and name and a list of every artboard, then Next and Last.
@@ -716,19 +769,21 @@ pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                     .unwrap_or("");
                 ui.label(egui::RichText::new(tool).size(11.5).color(t.text_dim));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} {:.1} ms · {} {:.1} ms · {:.0} fps",
-                            crate::i18n::tr_ctx(crate::i18n::current(), "diagnostics", "render"),
-                            app.perf.render_ms,
-                            crate::i18n::tr_ctx(crate::i18n::current(), "diagnostics", "ui"),
-                            app.perf.frame_ms,
-                            app.perf.fps
-                        ))
-                        .size(10.5)
-                        .color(t.text_disabled),
-                    );
-                    if let Some(p) = app.hover_doc {
+                    if !compact {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {:.1} ms · {} {:.1} ms · {:.0} fps",
+                                crate::i18n::tr_ctx(crate::i18n::current(), "diagnostics", "render"),
+                                app.perf.render_ms,
+                                crate::i18n::tr_ctx(crate::i18n::current(), "diagnostics", "ui"),
+                                app.perf.frame_ms,
+                                app.perf.fps
+                            ))
+                            .size(10.5)
+                            .color(t.text_disabled),
+                        );
+                    }
+                    if let Some(p) = app.hover_doc.filter(|_| !compact || ui.available_width() >= 150.0) {
                         let u = app.session.general_unit();
                         ui.label(
                             egui::RichText::new(format!("X: {}  Y: {}", u.readout(p.x), u.readout(p.y))).font(theme::mono(10.5)).color(t.text_dim),
@@ -982,15 +1037,19 @@ fn hint_segments(tool: &str) -> Vec<(Cow<'static, str>, bool)> {
 
 pub fn hint_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    let compact = crate::responsive::compact(ui.ctx());
     let panel = egui::Panel::bottom("hint_bar")
-        .exact_size(28.0)
-        .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(10, 0)).stroke(Stroke::new(1.0, t.border)))
+        .exact_size(crate::responsive::hint_bar_height(ui.ctx()))
+        .frame(
+            egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(if compact { 6 } else { 10 }, 0)).stroke(Stroke::new(1.0, t.border)),
+        )
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-                ui.painter().circle_stroke(r.center(), 7.0, Stroke::new(1.2, t.text));
-                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "?", theme::semibold(11.0), t.text);
-                ui.add_space(6.0);
+                let icon_size = if compact { 14.0 } else { 16.0 };
+                let (r, _) = ui.allocate_exact_size(vec2(icon_size, icon_size), Sense::hover());
+                ui.painter().circle_stroke(r.center(), if compact { 6.0 } else { 7.0 }, Stroke::new(1.2, t.text));
+                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "?", theme::semibold(if compact { 10.0 } else { 11.0 }), t.text);
+                ui.add_space(if compact { 3.0 } else { 6.0 });
                 let mut job = egui::text::LayoutJob::default();
                 let segments = if let Some(d) = app.ui.dialog.as_ref().filter(|d| crate::dialogs::revolve_gizmo::active(d)) {
                     vec![(crate::dialogs::revolve_gizmo::hint(d).into(), false)]
@@ -1000,7 +1059,8 @@ pub fn hint_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                     hint_segments(hint)
                 };
                 for (txt, bold) in segments {
-                    let font = if bold { theme::semibold(12.5) } else { egui::FontId::proportional(12.5) };
+                    let size = if compact { 11.5 } else { 12.5 };
+                    let font = if bold { theme::semibold(size) } else { egui::FontId::proportional(size) };
                     job.append(&txt, 0.0, egui::TextFormat { font_id: font, color: if bold { t.text_strong } else { t.text }, ..Default::default() });
                 }
                 ui.label(job);

@@ -96,6 +96,10 @@ pub fn remember(app: &mut VectorcraftApp, id: &str) {
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
+    if app.ui.toolbar_collapsed {
+        collapsed(app, ui, &t);
+        return;
+    }
     // The user's choice alone: a window too short for the tools scrolls them.
     let cols = if app.ui.toolbar_double { 2 } else { 1 };
     // Two 36 pt buttons with 2 pt either side inside the border and separator line (at 76 they
@@ -136,6 +140,39 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     crate::edit_toolbar::drawer(app, ui.ctx());
 }
 
+/// The Tools panel reduced to a narrow rail. Unlike Window › Tools this keeps an always-visible,
+/// touch-sized way to restore every tool, and the central panel automatically takes the released
+/// width.
+fn collapsed(app: &mut VectorcraftApp, ui: &mut Ui, t: &Tokens) {
+    const RAIL: f32 = 34.0;
+    let edge = ui.available_rect_before_wrap();
+    ui.ctx().data_mut(|d| d.insert_temp(crate::floating::tools_zone_id(), egui::Rect::from_min_size(edge.min, vec2(RAIL, edge.height()))));
+    egui::Panel::left("toolbar-collapsed").resizable(false).exact_size(RAIL).frame(egui::Frame::NONE).show(ui, |ui| {
+        crate::theme::card(ui, t, egui::Margin { left: 3, right: 3, top: 6, bottom: 6 }, |ui| {
+            ui.vertical_centered(|ui| {
+                let expand = widgets::icon_button(ui, "chevrons-right", tl!("Expand Panels"), false, 28.0);
+                if expand.clicked()
+                    && let Err(e) = app.run("window.collapseToolbar", json!({"collapsed": false}))
+                {
+                    app.ui.status = e;
+                }
+                ui.add_space(4.0);
+                if let Some(tool) = tool_info(app.session.tool_id()) {
+                    let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 34.0), Sense::click());
+                    icons::paint(ui, icons::tool_icon(tool.icon), egui::Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), t.icon);
+                    let resp = resp.on_hover_text(tip(tool));
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tip(tool)));
+                    if resp.clicked()
+                        && let Err(e) = app.run("window.collapseToolbar", json!({"collapsed": false}))
+                    {
+                        app.ui.status = e;
+                    }
+                }
+            });
+        });
+    });
+}
+
 /// The Tools panel's contents, docked or floating at `floating`.
 fn body(app: &mut VectorcraftApp, ui: &mut Ui, cols: usize, floating: Option<egui::Pos2>) {
     let t = Tokens::get(ui.ctx());
@@ -144,6 +181,22 @@ fn body(app: &mut VectorcraftApp, ui: &mut Ui, cols: usize, floating: Option<egu
     // The drawer opens beside it; a click in it leaves the drawer open.
     ui.data_mut(|d| d.insert_temp(crate::edit_toolbar::toolbar_id(), bounds));
     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+    // A phone-height workspace gets a full-width touch target for collapsing Tools. The desktop
+    // header below is unchanged and still switches one/two columns.
+    if crate::responsive::compact(ui.ctx()) {
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
+        if resp.hovered() {
+            ui.painter().rect_filled(rect, 0.0, t.hover);
+        }
+        icons::paint(ui, "chevrons-left", egui::Rect::from_center_size(rect.center(), vec2(14.0, 14.0)), t.text);
+        let resp = resp.on_hover_text(tl!("Collapse to Icons"));
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tl!("Collapse to Icons")));
+        if resp.clicked()
+            && let Err(e) = app.run("window.collapseToolbar", json!({"collapsed": true}))
+        {
+            app.ui.status = e;
+        }
+    }
     // Title bar with » and a grip strip: a drag on either floats the panel or moves it.
     let (hdr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), 14.0), Sense::click_and_drag());
     ui.painter().rect_filled(hdr, 0.0, t.tab_strip);

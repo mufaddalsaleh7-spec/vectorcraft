@@ -161,9 +161,15 @@ impl Pointers {
                 }
                 true
             }
-            // Keep eframe's touch/IME path unchanged on touch-only devices. Reloading the
-            // page resets this policy; an old localStorage marker is deliberately ignored.
-            "touch" if !touch::pen_seen() => false,
+            // Keep eframe's touch/IME path unchanged on touch-only devices. We still remember that
+            // its primary pointer is coarse, so canvas picking can use a finger-friendly invisible
+            // radius. Reloading the page resets the pen policy.
+            "touch" if !touch::pen_seen() => {
+                if kind == "pointerdown" {
+                    touch::set_source(Source::Finger);
+                }
+                false
+            }
             "touch" => {
                 match kind {
                     "pointerdown" => {
@@ -340,11 +346,14 @@ mod tests {
         reset();
         let mut p = Pointers::default();
         let pos = Pos2::new(10.0, 20.0);
-        for pointer_type in ["touch", "mouse"] {
-            for kind in ["pointerdown", "pointermove", "pointerup", "pointercancel"] {
-                assert!(!p.feed(kind, &input(pointer_type, 0), pos, &[], true));
-            }
+        for kind in ["pointerdown", "pointermove", "pointerup", "pointercancel"] {
+            assert!(!p.feed(kind, &input("touch", 0), pos, &[], true));
         }
+        assert!(touch::coarse_pointer(), "touch-only input keeps eframe's events but gets a finger-sized canvas hit radius");
+        for kind in ["pointerdown", "pointermove", "pointerup", "pointercancel"] {
+            assert!(!p.feed(kind, &input("mouse", 0), pos, &[], true));
+        }
+        assert!(!touch::coarse_pointer(), "a mouse restores precise picking");
         assert!(p.take().is_empty());
         assert!(!p.captures_touch(true), "eframe must also receive DOM touch events before a pen");
         assert!(p.feed("pointerdown", &input("pen", 0), pos, &[], true));

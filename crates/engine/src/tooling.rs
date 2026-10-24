@@ -27,6 +27,9 @@ pub struct ViewInfo {
     pub screen: Option<vectorcraft_tools::ScreenFrame>,
     /// The view's active artboard (an index): artboard rulers measure from it.
     pub artboard: usize,
+    /// The primary pointer has a finger-sized contact area. Tools keep their desktop visuals but
+    /// use at least an 8 px object/anchor picking tolerance.
+    pub coarse_pointer: bool,
 }
 
 impl Default for ViewInfo {
@@ -43,6 +46,7 @@ impl Default for ViewInfo {
             corner_widgets: true,
             screen: None,
             artboard: 0,
+            coarse_pointer: false,
         }
     }
 }
@@ -216,7 +220,7 @@ impl Session {
             slices_hidden: self.menu.slices_hidden,
             slices_locked: self.menu.slices_locked,
             auto_add_delete: !self.prefs.disable_auto_add_delete,
-            selection_tolerance: self.prefs.selection_tolerance,
+            selection_tolerance: if view.coarse_pointer { self.prefs.selection_tolerance.max(8.0) } else { self.prefs.selection_tolerance },
             anchor_size: self.prefs.anchor_size,
             path_only: self.prefs.object_selection_by_path_only,
             type_path_only: self.prefs.type_selection_by_path_only,
@@ -299,7 +303,8 @@ impl Session {
             return Ok(());
         }
         let Some(d) = self.active() else { return Ok(()) };
-        let tol = self.prefs.selection_tolerance / view.zoom.max(1e-9);
+        let selection_tolerance = if view.coarse_pointer { self.prefs.selection_tolerance.max(8.0) } else { self.prefs.selection_tolerance };
+        let tol = selection_tolerance / view.zoom.max(1e-9);
         let inside = self.draw_inside.and_then(|t| d.doc.bounds_of(&[t], false)).is_some_and(|b| b.inflate(tol, tol).contains(ev.pos));
         if !inside {
             self.execute("view.drawMode", &serde_json::json!({ "mode": "normal" }))?;

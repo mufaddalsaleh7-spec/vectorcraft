@@ -11,14 +11,12 @@ use crate::state::{DockTab, ICON_PANEL_GROUPS, ICON_PANELS};
 use crate::theme::{self, Tokens};
 use crate::{VectorcraftApp, floating, icons, panels, widgets};
 
+#[cfg(test)]
 const ICON_COL: f32 = 38.0;
 /// Height of the strip along the top of a dock column that carries its double arrow.
 const HEADER: f32 = 14.0;
 /// The tabbed group's width until the dock has been laid out (its default size).
 const DOCK_WIDTH: f32 = 300.0;
-/// Top of a popped-out panel.
-const FLYOUT_TOP: f32 = 110.0;
-
 /// Where the icon column's left edge was drawn last (egui temp memory, one frame old).
 fn column_left_id() -> egui::Id {
     egui::Id::new("dock-icon-column-left")
@@ -45,8 +43,10 @@ pub fn set_collapsed(app: &mut VectorcraftApp, collapsed: bool) {
 /// « expands it. The whole strip is the click target (as on the toolbar). True when clicked.
 pub(crate) fn collapse_header(ui: &mut Ui, collapsed: bool) -> bool {
     let t = Tokens::get(ui.ctx());
-    let (hdr, resp) = ui.allocate_exact_size(vec2(ui.available_width(), HEADER), Sense::click());
-    let arrow = Rect::from_min_size(hdr.right_top() + vec2(-16.0, 1.0), vec2(12.0, 12.0));
+    let metrics = crate::responsive::dock_metrics(ui.ctx());
+    let (hdr, resp) = ui.allocate_exact_size(vec2(ui.available_width(), metrics.header), Sense::click());
+    let icon_size = if crate::responsive::compact(ui.ctx()) { 16.0 } else { 12.0 };
+    let arrow = Rect::from_center_size(hdr.right_center() - vec2(if metrics.header > HEADER { 10.0 } else { 8.0 }, 0.0), vec2(icon_size, icon_size));
     if resp.hovered() {
         ui.painter().rect_filled(arrow, CornerRadius::same(2), t.hover);
     }
@@ -68,7 +68,8 @@ fn toggle(app: &mut VectorcraftApp, collapsed: bool) {
 fn panel_icon(app: &mut VectorcraftApp, ui: &mut Ui, id: &'static str, label: &str, icon: &str, _column: Rect) {
     let open = app.ui.open_panel.as_deref() == Some(id);
     // Its own id: the icons below it move up when it floats, and mustn't take over its drag.
-    let (_, rect) = ui.allocate_space(vec2(30.0, 30.0));
+    let size = crate::responsive::dock_metrics(ui.ctx()).icon_button;
+    let (_, rect) = ui.allocate_space(vec2(size, size));
     let resp = widgets::paint_icon_button(ui, ui.interact(rect, ui.id().with(("panel-icon", id)), Sense::click_and_drag()), icon, label, open);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), open, tl!(label)));
     if resp.clicked() {
@@ -82,13 +83,16 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
         return;
     }
     let t = Tokens::get(ui.ctx());
+    let metrics = crate::responsive::dock_metrics(ui.ctx());
     let shown = floating::shown_tab(&app.ui);
-    // Main tabbed group, unless it is collapsed to icons or all its panels float.
+    // Main tabbed group, unless it is collapsed to icons or all its panels float. Compact and
+    // desktop use separate panel ids so rotating a phone never overwrites the desktop width the
+    // user chose.
     let group = shown.filter(|_| !app.ui.dock_collapsed).map(|active| {
-        egui::Panel::right("dock")
+        egui::Panel::right(if crate::responsive::compact(ui.ctx()) { "dock-compact" } else { "dock" })
             .resizable(true)
-            .default_size(DOCK_WIDTH)
-            .size_range(230.0..=520.0)
+            .default_size(metrics.default_width)
+            .size_range(metrics.min_width..=metrics.max_width)
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
                 crate::theme::card(ui, &t, egui::Margin { left: 0, right: 6, top: 6, bottom: 6 }, |ui| {
@@ -118,45 +122,51 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
     // collapsed group's panels head it, under the « that expands them again. Floating panels leave
     // it.
     let collapsed = app.ui.dock_collapsed && shown.is_some();
-    let column = egui::Panel::right("icon_column").resizable(false).exact_size(ICON_COL).frame(egui::Frame::NONE).show(ui, |ui| {
-        crate::theme::card(ui, &t, egui::Margin { left: 3, right: 3, top: 6, bottom: 6 }, |ui| {
-            let bounds = ui.max_rect();
-            if collapsed && collapse_header(ui, true) {
-                toggle(app, false);
-            }
-            egui::Frame::NONE.inner_margin(egui::Margin::symmetric(1, 4)).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                // The icons scroll in a window too short for them.
-                widgets::strip_scroll(ui, "icon_column", |ui| {
-                    if collapsed {
-                        for tab in DockTab::ALL {
-                            let (id, label, icon) = tab.info();
-                            if floating::group_of(&app.ui, id).is_none() {
+    let column = egui::Panel::right(if crate::responsive::compact(ui.ctx()) { "icon_column-compact" } else { "icon_column" })
+        .resizable(false)
+        .exact_size(metrics.icon_column)
+        .frame(egui::Frame::NONE)
+        .show(ui, |ui| {
+            crate::theme::card(ui, &t, egui::Margin { left: 3, right: 3, top: 6, bottom: 6 }, |ui| {
+                let bounds = ui.max_rect();
+                if collapsed && collapse_header(ui, true) {
+                    toggle(app, false);
+                }
+                egui::Frame::NONE.inner_margin(egui::Margin::symmetric(1, 4)).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    // The icons scroll in a window too short for them.
+                    widgets::strip_scroll(ui, "icon_column", |ui| {
+                        if collapsed {
+                            for tab in DockTab::ALL {
+                                let (id, label, icon) = tab.info();
+                                if floating::group_of(&app.ui, id).is_none() {
+                                    panel_icon(app, ui, id, label, icon, bounds);
+                                }
+                            }
+                        }
+                        // A divider above each group with icons left, but the first.
+                        let mut divider = collapsed;
+                        for group in ICON_PANEL_GROUPS {
+                            let mut first = true;
+                            for id in group.iter() {
+                                let Some((_, label, icon)) = ICON_PANELS.iter().find(|p| p.0 == *id) else { continue };
+                                if floating::group_of(&app.ui, id).is_some() {
+                                    continue;
+                                }
+                                if std::mem::take(&mut first) && std::mem::replace(&mut divider, true) {
+                                    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 7.0), Sense::hover());
+                                    ui.painter().line_segment(
+                                        [r.left_center() + vec2(4.0, 0.0), r.right_center() - vec2(4.0, 0.0)],
+                                        Stroke::new(1.0, t.divider),
+                                    );
+                                }
                                 panel_icon(app, ui, id, label, icon, bounds);
                             }
                         }
-                    }
-                    // A divider above each group with icons left, but the first.
-                    let mut divider = collapsed;
-                    for group in ICON_PANEL_GROUPS {
-                        let mut first = true;
-                        for id in group.iter() {
-                            let Some((_, label, icon)) = ICON_PANELS.iter().find(|p| p.0 == *id) else { continue };
-                            if floating::group_of(&app.ui, id).is_some() {
-                                continue;
-                            }
-                            if std::mem::take(&mut first) && std::mem::replace(&mut divider, true) {
-                                let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 7.0), Sense::hover());
-                                ui.painter()
-                                    .line_segment([r.left_center() + vec2(4.0, 0.0), r.right_center() - vec2(4.0, 0.0)], Stroke::new(1.0, t.divider));
-                            }
-                            panel_icon(app, ui, id, label, icon, bounds);
-                        }
-                    }
+                    });
                 });
-            });
-        })
-    });
+            })
+        });
     let column = column.response.rect;
     let dock = group.map_or(column, |g| g.union(column));
     // Floating sets docked as columns, left of the icon column.
@@ -174,7 +184,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
 /// the shown panel floats now.
 fn tab_strip(app: &mut VectorcraftApp, ui: &mut Ui, active: DockTab) -> bool {
     let t = Tokens::get(ui.ctx());
-    let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), 33.0), Sense::hover());
+    let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), crate::responsive::dock_metrics(ui.ctx()).tab_height), Sense::hover());
     ui.painter().line_segment([strip.left_bottom(), strip.right_bottom()], Stroke::new(1.0, t.divider));
     let outside = ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| !strip.contains(p));
     // What a drag out of the strip floats: the panels, the one shown, where its tab began.
@@ -313,13 +323,14 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     }
     let t = Tokens::get(ctx);
     let screen = ctx.content_rect();
+    let metrics = crate::responsive::dock_metrics(ctx);
     // Pinned by its right edge, 6 points left of the icon column wherever the dock's width (or its
     // collapsed state) put it: content wider than the flyout grows it towards the canvas rather
     // than over the panel icons. Without a dock on screen it keeps to the window's right edge.
     let column = if app.ui.dock && app.ui.screen_mode < 3 {
         ctx.data(|d| d.get_temp::<f32>(column_left_id()))
             .filter(|x| x.is_finite() && *x > screen.left() && *x <= screen.right())
-            .unwrap_or_else(|| screen.right() - ICON_COL - if app.ui.dock_collapsed { 0.0 } else { DOCK_WIDTH })
+            .unwrap_or_else(|| screen.right() - metrics.icon_column - if app.ui.dock_collapsed { 0.0 } else { metrics.default_width })
     } else {
         screen.right()
     };
@@ -329,11 +340,13 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     // The tabbed group's panels fill their height (Layers) or scroll (Properties): give them one
     // that keeps the flyout on screen.
     let width = panel_width(id);
-    let tall = (screen.height() - FLYOUT_TOP - 26.0 - 20.0 - 40.0).clamp(160.0, 560.0);
+    let flyout_top = crate::responsive::panel_flyout_top(ctx, app.ui.control_bar);
+    let available = (screen.bottom() - flyout_top - 26.0 - 20.0 - 14.0).max(96.0);
+    let tall = available.min(560.0);
     let mut open = true;
     let mut torn = None;
     let area = egui::Area::new(egui::Id::new("icon-panel")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP);
-    area.fixed_pos(egui::pos2(right, FLYOUT_TOP)).show(ctx, |ui| {
+    area.fixed_pos(egui::pos2(right, flyout_top)).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).fill(t.panel).corner_radius(CornerRadius::same(4)).inner_margin(egui::Margin::ZERO).show(ui, |ui| {
             ui.set_width(width);
             let (strip, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
@@ -369,7 +382,7 @@ pub fn floating_panel(app: &mut VectorcraftApp, ctx: &egui::Context) {
     // backdrop, nor one that closes a popup (a panel menu, a dropdown the flyout opened).
     if open && app.session.prefs.auto_collapse_icon_panels && !egui::Popup::is_any_open(ctx) {
         let away = |p: egui::Pos2| {
-            !(column..=column + ICON_COL).contains(&p.x)
+            !(column..=column + metrics.icon_column).contains(&p.x)
                 && ctx.layer_id_at(p).is_none_or(|l| l.order != egui::Order::Foreground && l != crate::dialogs::modal::backdrop())
         };
         if ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten()).is_some_and(away) {

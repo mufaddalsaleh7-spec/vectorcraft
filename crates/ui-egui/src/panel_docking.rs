@@ -620,6 +620,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
     }
     let layout = layout.clone();
     let t = crate::theme::Tokens::get(ui.ctx());
+    let metrics = crate::responsive::dock_metrics(ui.ctx());
     let collapsed = app.ui.dock_collapsed;
     let mut display = if collapsed { Layout { root: None, floating: layout.floating.clone() } } else { layout.clone() };
     display
@@ -647,14 +648,14 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
                     .map(|tab| tab.info())
                     .or_else(|| crate::state::ICON_PANELS.iter().find(|entry| entry.0 == panel).copied());
                 if let Some((_, label, icon)) = info
-                    && crate::widgets::icon_button(ui, icon, tl!(label), app.ui.open_panel.as_ref() == Some(panel), 30.0).clicked()
+                    && crate::widgets::icon_button(ui, icon, tl!(label), app.ui.open_panel.as_ref() == Some(panel), metrics.icon_button).clicked()
                 {
                     app.ui.open_panel = if app.ui.open_panel.as_ref() == Some(panel) { None } else { Some(panel.clone()) };
                 }
             }
         }
         let mut style = craft_ui::docking::DockStyle::from_ui(ui);
-        style.tab_height = 33.0;
+        style.tab_height = metrics.tab_height;
         // The dock is a card (`theme::card`): its panes and tab strip lie on the card's colour
         // (square fills would cover its rounded corners). Floating groups get the fills below.
         style.background = egui::Color32::TRANSPARENT;
@@ -677,7 +678,7 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
             &style,
             |id| crate::state::all_panels().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone()),
             |_| craft_ui::docking::Permissions::default(),
-            |_| craft_ui::docking::PanelLimits { min: egui::vec2(220.0, 80.0), ..Default::default() },
+            |_| craft_ui::docking::PanelLimits { min: egui::vec2(metrics.min_width, 80.0), ..Default::default() },
             &mut content,
         );
         for (id, params) in content.commands {
@@ -688,8 +689,12 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
         output
     };
     let output = if layout.root.is_some() {
-        let panel = egui::Panel::right("shared-panel-dock").default_size(310.0).size_range(220.0..=720.0).resizable(true).frame(egui::Frame::NONE);
-        let panel = if collapsed { panel.exact_size(38.0).resizable(false) } else { panel };
+        let panel = egui::Panel::right(if crate::responsive::compact(ui.ctx()) { "shared-panel-dock-compact" } else { "shared-panel-dock" })
+            .default_size(if crate::responsive::compact(ui.ctx()) { metrics.default_width } else { 310.0 })
+            .size_range(metrics.min_width..=if crate::responsive::compact(ui.ctx()) { metrics.max_width } else { 720.0 })
+            .resizable(true)
+            .frame(egui::Frame::NONE);
+        let panel = if collapsed { panel.exact_size(metrics.icon_column).resizable(false) } else { panel };
         let shown = panel.show(ui, |ui| crate::theme::card(ui, &t, egui::Margin { left: 0, right: 6, top: 6, bottom: 6 }, &mut draw));
         ui.ctx().data_mut(|data| data.insert_temp(crate::floating::dock_rect_id(), shown.response.rect));
         shown.inner
@@ -778,8 +783,9 @@ pub(crate) fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> bool {
 
 fn icon_rail(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    let column = egui::Panel::right("shared-panel-icons")
-        .exact_size(38.0)
+    let metrics = crate::responsive::dock_metrics(ui.ctx());
+    let column = egui::Panel::right(if crate::responsive::compact(ui.ctx()) { "shared-panel-icons-compact" } else { "shared-panel-icons" })
+        .exact_size(metrics.icon_column)
         .resizable(false)
         .frame(egui::Frame::NONE)
         .show(ui, |ui| {
@@ -794,7 +800,7 @@ fn icon_rail(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
                         if app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&id.to_string())) {
                             continue;
                         }
-                        let (_, rect) = ui.allocate_space(egui::vec2(30.0, 30.0));
+                        let (_, rect) = ui.allocate_space(egui::vec2(metrics.icon_button, metrics.icon_button));
                         let response = ui.interact(rect, ui.id().with(("panel-icon", id)), egui::Sense::click_and_drag());
                         let response = crate::widgets::paint_icon_button(ui, response, icon, tl!(label), app.ui.open_panel.as_deref() == Some(id));
                         if response.clicked() {

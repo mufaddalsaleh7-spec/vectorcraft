@@ -18,6 +18,9 @@ pub struct Workspace {
     pub control_bar: bool,
     pub rulers: bool,
     pub toolbar: bool,
+    /// Tools reduced to its narrow expand rail.
+    #[serde(default)]
+    pub toolbar_collapsed: bool,
     pub toolbar_double: bool,
     pub toolbar_advanced: bool,
     pub task_bar: bool,
@@ -126,6 +129,7 @@ pub fn capture(ui: &UiState, name: &str) -> Workspace {
         control_bar: ui.control_bar,
         rulers: ui.view.rulers,
         toolbar: ui.toolbar,
+        toolbar_collapsed: ui.toolbar_collapsed,
         toolbar_double: ui.toolbar_double,
         toolbar_advanced: ui.toolbar_advanced,
         task_bar: ui.task_bar,
@@ -148,6 +152,7 @@ pub fn apply(ui: &mut UiState, w: &Workspace) {
     ui.control_bar = w.control_bar;
     ui.view.rulers = w.rulers;
     ui.toolbar = w.toolbar;
+    ui.toolbar_collapsed = w.toolbar_collapsed;
     ui.toolbar_double = w.toolbar_double;
     ui.toolbar_advanced = w.toolbar_advanced;
     ui.task_bar = w.task_bar;

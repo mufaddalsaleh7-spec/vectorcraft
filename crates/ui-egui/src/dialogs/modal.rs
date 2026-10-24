@@ -30,7 +30,16 @@ pub(crate) fn show_at<R>(ctx: &egui::Context, title: &str, id: Id, initial: Vec2
         .title_bar(false)
         .anchor(egui::Align2::CENTER_CENTER, offset(ctx, id, initial))
         .frame(egui::Frame::window(&ctx.global_style()).fill(t.panel).inner_margin(egui::Margin::same(margin)))
-        .show(ctx, add)
+        .show(ctx, |ui| {
+            if crate::responsive::compact(ctx) {
+                let max = crate::responsive::modal_max_size(ctx);
+                // Dialogs keep their desktop form. A short phone viewport scrolls that form rather
+                // than clipping its lower buttons or forcing page-level scrolling.
+                egui::ScrollArea::both().max_width(max.x).max_height(max.y).auto_shrink([true, true]).show(ui, add).inner
+            } else {
+                add(ui)
+            }
+        })
         .and_then(|r| r.inner)
 }
 

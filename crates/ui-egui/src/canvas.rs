@@ -1855,8 +1855,9 @@ fn hit_with<T>(
     test: impl FnOnce(&vectorcraft_doc::Document, Point, vectorcraft_doc::hit::HitOptions) -> Option<T>,
 ) -> Option<T> {
     let prefs = &app.session.prefs;
+    let selection_tolerance = if app.coarse_pointer() { prefs.selection_tolerance.max(8.0) } else { prefs.selection_tolerance };
     let opt = vectorcraft_doc::hit::HitOptions {
-        tol: prefs.selection_tolerance / zoom,
+        tol: selection_tolerance / zoom,
         outline: app.ui.view.outline,
         path_only: prefs.object_selection_by_path_only,
         type_path_only: prefs.type_selection_by_path_only,

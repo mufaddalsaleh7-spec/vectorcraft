@@ -274,6 +274,12 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("window.control", "Control", "", "{}"),
     ("window.toolbar", "Tools", "", "{}"),
     (
+        "window.collapseToolbar",
+        "Collapse to Icons",
+        "",
+        "{collapsed?: bool} collapse the Tools panel to a narrow expand rail (true), expand it (false) or toggle (omitted); returns the new state",
+    ),
+    (
         "window.toolbarColumns",
         "Toolbar: Single/Double Column",
         "",
@@ -1306,6 +1312,12 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
         }
         "window.control" => flag(&mut app.ui.control_bar),
         "window.toolbar" => flag(&mut app.ui.toolbar),
+        "window.collapseToolbar" => opt_bool(p, "collapsed").map(|collapsed| {
+            let collapsed = collapsed.unwrap_or(!app.ui.toolbar_collapsed);
+            app.ui.toolbar_collapsed = collapsed;
+            app.ui.toolbar = true;
+            json!(collapsed)
+        }),
         "window.toolbarColumns" => opt_bool(p, "double").map(|on| {
             let on = on.unwrap_or(!app.ui.toolbar_double);
             app.ui.toolbar_double = on;
@@ -1741,6 +1753,7 @@ pub fn checked(app: &VectorcraftApp, id: &str, p: &Value) -> Option<bool> {
         "view.rotate" => app.view().zip(p.get("angle").and_then(Value::as_f64)).is_some_and(|(view, a)| (view.rotation - a).abs() < 1e-9),
         "window.control" => app.ui.control_bar,
         "window.toolbar" => app.ui.toolbar,
+        "window.collapseToolbar" => app.ui.toolbar_collapsed,
         "window.toolbarAdvanced" => app.ui.toolbar_advanced,
         "window.toolbarColumns" => app.ui.toolbar_double,
         "window.editToolbar" => app.ui.tools_drawer,
@@ -2875,7 +2888,14 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
                 c("Control", "window.control"),
                 c("Contextual Task Bar", "window.taskBar"),
                 c("Tools", "window.toolbar"),
-                sub("Toolbars", vec![c("Advanced", "window.toolbarAdvanced"), c("Double Column", "window.toolbarColumns")]),
+                sub(
+                    "Toolbars",
+                    vec![
+                        c("Advanced", "window.toolbarAdvanced"),
+                        c("Double Column", "window.toolbarColumns"),
+                        c("Collapse to Icons", "window.collapseToolbar"),
+                    ],
+                ),
                 Sep,
                 panel("Actions", "actions"),
                 panel("Align", "align"),
@@ -3139,11 +3159,16 @@ pub fn menu_bar(app: &mut VectorcraftApp, ui: &mut egui::Ui) -> f32 {
     // No application menu in the window (as in Illustrator): the bar starts at File on every
     // platform. The VectorCraft menu stays in the tree: the native Mac bar takes it from there.
     let tree: Vec<(&str, Vec<Item>)> = tree.into_iter().filter(|(title, _)| *title != "VectorCraft").collect();
+    let compact = crate::responsive::compact(ui.ctx());
     let (end, open) = egui::MenuBar::new()
         .ui(ui, |ui| {
+            if compact {
+                ui.spacing_mut().button_padding.x = 4.0;
+                ui.spacing_mut().item_spacing.x = 2.0;
+            }
             let mut titles = Vec::with_capacity(tree.len());
             for (title, items) in tree.iter() {
-                let text = egui::RichText::new(tl!(title)).size(13.0).color(t.text);
+                let text = egui::RichText::new(tl!(title)).size(if compact { 12.0 } else { 13.0 }).color(t.text);
                 titles.push(ui.menu_button(text, |ui| menu_body(app, ui, items, &mut clicked)).response);
             }
             (ui.cursor().min.x, switch_on_hover(ui.ctx(), &titles))

@@ -281,6 +281,10 @@ pub struct UiState {
     pub open_panel: Option<String>,
     pub control_bar: bool,
     pub toolbar: bool,
+    /// The Tools panel is reduced to a narrow expand rail. This is independent of Window › Tools,
+    /// which hides it completely, and is useful on short landscape viewports.
+    #[serde(default)]
+    pub toolbar_collapsed: bool,
     pub toolbar_double: bool,
     /// Advanced toolbar (every tool group) instead of the categorized Basic toolbar.
     #[serde(default)]
@@ -727,6 +731,7 @@ impl Default for UiState {
             open_panel: None,
             control_bar: false,
             toolbar: true,
+            toolbar_collapsed: false,
             toolbar_double: false,
             toolbar_advanced: false,
             task_bar: true,
