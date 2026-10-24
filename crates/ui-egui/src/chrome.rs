@@ -412,8 +412,9 @@ pub fn control_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 // shear, options) in a popover; X/Y/W/H follow inline while the bar has room.
                 crate::panels::transform::link(app, ui);
                 // The bounding box, rotated with rotated objects: its centre and its own sides.
+                // A compact bar scrolls, so its later fields do not need to fit the visible slice.
                 if let Some(b) = app.selection_box()
-                    && ui.available_width() >= INLINE_TRANSFORM_WIDTH
+                    && (compact || ui.available_width() >= INLINE_TRANSFORM_WIDTH)
                 {
                     let c = b.center();
                     let origin = app.ruler_origin();
