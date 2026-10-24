@@ -32,6 +32,35 @@ const COMPACT_MIN_WIDTH: f32 = 560.0;
 const COMPACT_MAX_WIDTH: f32 = 1_100.0;
 const COMPACT_MAX_HEIGHT: f32 = 500.0;
 
+#[derive(Clone, Copy)]
+struct InteractionMetrics {
+    radius: f32,
+    resize_side: f32,
+    resize_corner: f32,
+}
+
+impl InteractionMetrics {
+    fn get(interaction: &egui::style::Interaction) -> Self {
+        Self {
+            radius: interaction.interact_radius,
+            resize_side: interaction.resize_grab_radius_side,
+            resize_corner: interaction.resize_grab_radius_corner,
+        }
+    }
+
+    fn apply(self, interaction: &mut egui::style::Interaction) {
+        interaction.interact_radius = self.radius;
+        interaction.resize_grab_radius_side = self.resize_side;
+        interaction.resize_grab_radius_corner = self.resize_corner;
+    }
+}
+
+fn enlarge_touch_targets(interaction: &mut egui::style::Interaction) {
+    interaction.interact_radius = interaction.interact_radius.max(10.0);
+    interaction.resize_grab_radius_side = interaction.resize_grab_radius_side.max(10.0);
+    interaction.resize_grab_radius_corner = interaction.resize_grab_radius_corner.max(12.0);
+}
+
 /// Pick a density from the usable viewport in logical points (CSS pixels in the web build).
 pub(crate) fn mode_for(rect: Rect) -> Mode {
     let size = rect.size();
@@ -54,11 +83,30 @@ pub(crate) fn compact(ctx: &egui::Context) -> bool {
 /// size, while ordinary buttons and menu rows gain a slightly larger touch target.
 pub(crate) fn begin_frame(ui: &mut Ui) -> Mode {
     let mode = mode(ui.ctx());
+    let ctx = ui.ctx().clone();
+    let interaction_id = egui::Id::new("compact-landscape-interaction-baseline");
     if mode == Mode::CompactLandscape {
         let spacing = ui.spacing_mut();
         spacing.item_spacing = vec2(4.0, 3.0);
         spacing.button_padding = vec2(5.0, 2.0);
         spacing.interact_size = vec2(spacing.interact_size.x.max(28.0), spacing.interact_size.y.max(28.0));
+
+        // Enlarge the invisible response region, not the desktop-styled artwork. A 26–28 point
+        // field or menu row therefore has an effective finger target around 46–48 points high.
+        // Update the context too: dialogs, popups and floating panels create independent root UIs.
+        let baseline = InteractionMetrics::get(&ctx.style().interaction);
+        ctx.data_mut(|data| {
+            if data.get_temp::<InteractionMetrics>(interaction_id).is_none() {
+                data.insert_temp(interaction_id, baseline);
+            }
+        });
+        ctx.global_style_mut(|style| enlarge_touch_targets(&mut style.interaction));
+        enlarge_touch_targets(&mut ui.style_mut().interaction);
+    } else if let Some(baseline) = ctx.data_mut(|data| data.remove::<InteractionMetrics>(interaction_id)) {
+        // Rotation or resize back to a desktop viewport restores exactly the interaction radii the
+        // desktop style had before compact mode, without disturbing other live style preferences.
+        ctx.global_style_mut(|style| baseline.apply(&mut style.interaction));
+        baseline.apply(&mut ui.style_mut().interaction);
     }
     mode
 }
