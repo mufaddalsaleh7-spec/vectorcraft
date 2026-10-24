@@ -32,6 +32,22 @@ jobs:
           cargo --version
       - name: Formatting
         run: cargo fmt --all -- --check
+      - name: Build browser preview
+        id: browser-preview
+        run: |
+          curl --fail --location --retry 5 --output /tmp/trunk.tar.gz https://github.com/trunk-rs/trunk/releases/download/v0.22.0/trunk-x86_64-unknown-linux-gnu.tar.gz
+          mkdir /tmp/trunk
+          tar -xzf /tmp/trunk.tar.gz -C /tmp/trunk
+          sudo install "$(find /tmp/trunk -type f -name trunk -print -quit)" /usr/local/bin/trunk
+          cd apps/vectorcraft-web
+          trunk build --release
+      - name: Publish temporary branch preview
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f dist/web
+          git commit -m "chore: temporary browser preview [skip ci]"
+          git push origin HEAD:arena/cd315103-vectorcraft
       - name: Responsive editor tests
         run: |
           set -o pipefail
@@ -46,24 +62,6 @@ jobs:
         run: cargo test -p vectorcraft-web --bin vectorcraft-web
       - name: Web touch input check
         run: cargo check --target wasm32-unknown-unknown -p vectorcraft-web
-      - name: Build browser preview
-        id: browser-preview
-        if: ${{ always() }}
-        run: |
-          curl --fail --location --retry 5 --output /tmp/trunk.tar.gz https://github.com/trunk-rs/trunk/releases/download/v0.22.0/trunk-x86_64-unknown-linux-gnu.tar.gz
-          mkdir /tmp/trunk
-          tar -xzf /tmp/trunk.tar.gz -C /tmp/trunk
-          sudo install "$(find /tmp/trunk -type f -name trunk -print -quit)" /usr/local/bin/trunk
-          cd apps/vectorcraft-web
-          trunk build --release
-      - name: Publish temporary branch preview
-        if: ${{ always() && steps.browser-preview.outcome == 'success' }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist/web
-          git commit -m "chore: temporary browser preview [skip ci]"
-          git push origin HEAD:arena/cd315103-vectorcraft
       - name: Full project quality gate
         run: |
           set -o pipefail
