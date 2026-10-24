@@ -94,7 +94,7 @@ pub(crate) fn begin_frame(ui: &mut Ui) -> Mode {
         // Enlarge the invisible response region, not the desktop-styled artwork. A 26–28 point
         // field or menu row therefore has an effective finger target around 46–48 points high.
         // Update the context too: dialogs, popups and floating panels create independent root UIs.
-        let baseline = InteractionMetrics::get(&ctx.style().interaction);
+        let baseline = InteractionMetrics::get(&ctx.global_style().interaction);
         ctx.data_mut(|data| {
             if data.get_temp::<InteractionMetrics>(interaction_id).is_none() {
                 data.insert_temp(interaction_id, baseline);
@@ -102,7 +102,11 @@ pub(crate) fn begin_frame(ui: &mut Ui) -> Mode {
         });
         ctx.global_style_mut(|style| enlarge_touch_targets(&mut style.interaction));
         enlarge_touch_targets(&mut ui.style_mut().interaction);
-    } else if let Some(baseline) = ctx.data_mut(|data| data.remove::<InteractionMetrics>(interaction_id)) {
+    } else if let Some(baseline) = ctx.data_mut(|data| {
+        let baseline = data.get_temp::<InteractionMetrics>(interaction_id);
+        data.remove::<InteractionMetrics>(interaction_id);
+        baseline
+    }) {
         // Rotation or resize back to a desktop viewport restores exactly the interaction radii the
         // desktop style had before compact mode, without disturbing other live style preferences.
         ctx.global_style_mut(|style| baseline.apply(&mut style.interaction));
@@ -197,7 +201,7 @@ mod tests {
     fn compact_metrics_leave_room_for_the_canvas() {
         let ctx = egui::Context::default();
         for (w, h) in [(740.0, 360.0), (852.0, 393.0), (915.0, 412.0)] {
-            let mut out = ctx.run(egui::RawInput { screen_rect: Some(screen(w, h)), ..Default::default() }, |_| {});
+            let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen(w, h)), ..Default::default() }, |_| {});
             out.textures_delta.clear();
             let m = dock_metrics(&ctx);
             // Single-column Tools (54 pt including its margin), the expanded dock and its icon rail

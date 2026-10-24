@@ -79,7 +79,7 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
                 // Built-in workspace names translate; the user's own stay as typed.
                 let ws_name =
                     if crate::workspaces::is_builtin(&app.ui.workspace) { tl!(&app.ui.workspace).to_string() } else { app.ui.workspace.clone() };
-                let ws = ui.painter().layout_no_wrap(ws_name, egui::FontId::proportional(12.0), t.text);
+                let ws = ui.painter().layout_no_wrap(ws_name.clone(), egui::FontId::proportional(12.0), t.text);
                 let gap = ui.spacing().item_spacing.x;
                 let icon = 28.0;
                 // In compact landscape the switcher keeps all its functionality as a desktop-style
